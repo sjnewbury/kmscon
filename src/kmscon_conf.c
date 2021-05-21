@@ -347,6 +347,8 @@ static int file_login(struct conf_option *opt, bool on, const char *arg)
 
 	if (size < 1) {
 		log_error("empty argument given for 'login' config-option");
+		if (t)
+			free(t);
 		return -EFAULT;
 	}
 

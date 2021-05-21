@@ -878,7 +878,8 @@ int uterm_vt_allocate(struct uterm_vt_master *vtm,
 	} else {
 		if (!(allowed_types & UTERM_VT_FAKE)) {
 			ret = -ERANGE;
-			free(path);
+			if (path)
+				free(path);
 			goto err_input;
 		}
 		vt->mode = UTERM_VT_FAKE;

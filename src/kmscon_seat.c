@@ -1016,7 +1016,8 @@ void kmscon_session_unref(struct kmscon_session *sess)
 		return;
 
 	kmscon_session_unregister(sess);
-	free(sess);
+	if (sess)
+		free(sess);
 }
 
 void kmscon_session_unregister(struct kmscon_session *sess)
