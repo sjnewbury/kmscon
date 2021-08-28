@@ -414,6 +414,7 @@ static int video_init(struct uterm_video *video, const char *node)
 	EGLint major, minor, n;
 	EGLenum api;
 	EGLBoolean b;
+	EGLConfig *configs;
 	struct uterm_drm_video *vdrm;
 	struct uterm_drm3d_video *v3d;
 
@@ -471,11 +472,36 @@ static int video_init(struct uterm_video *video, const char *node)
 		goto err_disp;
 	}
 
-	b = eglChooseConfig(v3d->disp, conf_att, &v3d->conf, 1, &n);
-	if (!b || n != 1) {
+	if (!eglGetConfigs(v3d->disp, NULL, 0, &n)) {
+		log_error("cannot get configs for this display");
+		ret = -EFAULT;
+		goto err_disp;
+	}
+
+	configs = malloc(n * sizeof(EGLConfig));
+
+	b = eglChooseConfig(v3d->disp, conf_att, configs, n, &n);
+	if (!b || n < 1) {
 		log_error("cannot find a proper EGL framebuffer configuration");
 		ret = -EFAULT;
 		goto err_disp;
+	}
+
+	v3d->conf = configs[0];
+	for (int i = 0; i < n; ++i) {
+		EGLint gbm_format;
+
+		if (!eglGetConfigAttrib(v3d->disp, configs[i],
+				EGL_NATIVE_VISUAL_ID, &gbm_format)) {
+			log_error("error getting attribute for EGL config");
+			ret = -EFAULT;
+			goto err_config;
+		}
+
+		if (gbm_format == GBM_FORMAT_XRGB8888) {
+			v3d->conf = configs[i];
+			break;
+	        }
 	}
 
 	v3d->ctx = eglCreateContext(v3d->disp, v3d->conf, EGL_NO_CONTEXT,
@@ -483,7 +509,7 @@ static int video_init(struct uterm_video *video, const char *node)
 	if (v3d->ctx == EGL_NO_CONTEXT) {
 		log_error("cannot create egl context");
 		ret = -EFAULT;
-		goto err_disp;
+		goto err_config;
 	}
 
 	if (!eglMakeCurrent(v3d->disp, EGL_NO_SURFACE, EGL_NO_SURFACE,
@@ -492,6 +518,8 @@ static int video_init(struct uterm_video *video, const char *node)
 		ret = -EFAULT;
 		goto err_ctx;
 	}
+
+	free (configs);
 
 	ext = (const char*)glGetString(GL_EXTENSIONS);
 	if (ext && strstr((const char*)ext, "GL_EXT_unpack_subimage"))
@@ -503,6 +531,8 @@ static int video_init(struct uterm_video *video, const char *node)
 
 err_ctx:
 	eglDestroyContext(v3d->disp, v3d->ctx);
+err_config:
+	free(configs);
 err_disp:
 	eglTerminate(v3d->disp);
 err_gbm:
